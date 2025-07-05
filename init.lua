@@ -1138,7 +1138,7 @@ require('lazy').setup({
 })
 
 vim.lsp.config('elixirls', {
-  cmd = { '/home/ayrdim/.local/share/nvim/mason/packages/elixir-ls/language_server.sh' },
+  cmd = { '/home/engineer/.local/share/nvim/mason/packages/elixir-ls/language_server.sh' },
 })
 
 -- The line beneath this is called `modeline`. See `:help modeline`
