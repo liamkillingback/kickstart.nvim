@@ -3,7 +3,7 @@
 ## Install for dummies
 
 ```sh
-git clone https://github.com/ayrdim/kickstart.nvim.git "${XDG_CONFIG_HOME:-$HOME/.config}"/nvim
+git clone https://github.com/liamkillingback/kickstart.nvim.git "${XDG_CONFIG_HOME:-$HOME/.config}"/nvim
 ```
 
 Then run `nvim` and watch the magic happen baby 
