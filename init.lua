@@ -100,9 +100,8 @@ vim.g.have_nerd_font = true
 
 -- Make line numbers default
 vim.o.number = true
--- You can also add relative line numbers, to help with jumping.
---  Experiment for yourself to see if you like it!
--- vim.o.relativenumber = true
+-- Add relative line numbers for easier jumping with motion counts.
+vim.o.relativenumber = true
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.o.mouse = 'a'
@@ -167,10 +166,14 @@ vim.o.scrolloff = 10
 -- See `:help 'confirm'`
 vim.o.confirm = true
 
+-- Keep explorer changes (netrw / file browser) in sync with current working directory.
+vim.g.netrw_keepdir = 0
+
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
 
 vim.keymap.set('i', 'jk', '<Esc>', { noremap = true })
+vim.keymap.set('i', '<A-e>', '<C-o>$', { desc = 'Insert: go to end of line' })
 vim.keymap.set('n', '<BS>', '<C-o>', { noremap = true })
 vim.keymap.set('n', '<CR>', '<C-]>', { noremap = true })
 vim.keymap.set('n', 'F', '$zf%')
@@ -1138,6 +1141,9 @@ require('lazy').setup({
     },
   },
 })
+
+-- Load beginner-friendly keymap cheat sheet command/mapping.
+require('custom.cheatsheet')
 
 vim.lsp.config('expert', {
   cmd = { 'expert', '--stdio' },
