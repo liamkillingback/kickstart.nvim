@@ -850,9 +850,21 @@ require('lazy').setup({
     --- @type blink.cmp.Config
     opts = {
       keymap = {
-        ['<Tab>'] = { 'accept', 'fallback' },
-        ['<Enter>'] = { 'accept', 'fallback' },
-        -- ['<Enter>'] = { 'accept' },
+        preset = 'super-tab',
+        ['<Tab>'] = {
+          function(cmp)
+            if cmp.snippet_active() then
+              return cmp.accept()
+            else
+              return cmp.select_and_accept()
+            end
+          end,
+          'snippet_forward',
+          'fallback',
+        },
+        ['<Enter>'] = { 'select_and_accept', 'fallback' },
+        ['<CR>'] = { 'select_and_accept', 'fallback' },
+        ['<C-y>'] = { 'select_and_accept', 'fallback' },
 
         ['<A-k>'] = { 'select_prev' },
         ['<A-j>'] = { 'select_next' },
@@ -877,7 +889,7 @@ require('lazy').setup({
         -- <c-k>: Toggle signature help
         --
         -- See :h blink-cmp-config-keymap for defining your own keymap
-        preset = 'default',
+        -- Keep `super-tab` for snippet navigation/accept, and explicit Enter for confirm.
 
         -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
         --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
