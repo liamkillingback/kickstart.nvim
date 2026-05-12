@@ -432,6 +432,7 @@ require('lazy').setup({
             i = {
               ['<A-j>'] = 'move_selection_next',
               ['<A-k>'] = 'move_selection_previous',
+              ['<C-s>'] = 'select_vertical',
             },
           },
         },
@@ -950,53 +951,95 @@ require('lazy').setup({
       -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
       vim.cmd.colorscheme 'tokyonight-night'
 
-      local function apply_focused_window_transparency()
-        local transparent_groups = {
-          Normal = 'NormalFocused',
-          NormalNC = 'NormalNCFocused',
-          SignColumn = 'SignColumnFocused',
-          EndOfBuffer = 'EndOfBufferFocused',
-          LineNr = 'LineNrFocused',
-          CursorLineNr = 'CursorLineNrFocused',
-          FoldColumn = 'FoldColumnFocused',
-          CursorLine = 'CursorLineFocused',
-        }
+      local window_background_groups = {
+        Normal = 'InactiveNormal',
+        NormalNC = 'InactiveNormalNC',
+        SignColumn = 'InactiveSignColumn',
+        EndOfBuffer = 'InactiveEndOfBuffer',
+        NonText = 'InactiveNonText',
+        LineNr = 'InactiveLineNr',
+        CursorLineNr = 'InactiveCursorLineNr',
+        FoldColumn = 'InactiveFoldColumn',
+        CursorLine = 'InactiveCursorLine',
+        CursorColumn = 'InactiveCursorColumn',
+        ColorColumn = 'InactiveColorColumn',
+        WinBar = 'InactiveWinBar',
+        WinBarNC = 'InactiveWinBarNC',
+      }
 
-        for source, target in pairs(transparent_groups) do
-          local hl = vim.api.nvim_get_hl(0, { name = source, link = false })
-          hl.bg = nil
-          hl.ctermbg = nil
-          vim.api.nvim_set_hl(0, target, hl)
+      local inactive_window_highlights = table.concat({
+        'Normal:InactiveNormal',
+        'NormalNC:InactiveNormalNC',
+        'SignColumn:InactiveSignColumn',
+        'EndOfBuffer:InactiveEndOfBuffer',
+        'NonText:InactiveNonText',
+        'LineNr:InactiveLineNr',
+        'CursorLineNr:InactiveCursorLineNr',
+        'FoldColumn:InactiveFoldColumn',
+        'CursorLine:InactiveCursorLine',
+        'CursorColumn:InactiveCursorColumn',
+        'ColorColumn:InactiveColorColumn',
+        'WinBar:InactiveWinBar',
+        'WinBarNC:InactiveWinBarNC',
+      }, ',')
+
+      local function set_background(hl, bg)
+        hl.bg = bg
+        hl.ctermbg = bg
+        return hl
+      end
+
+      local inactive_window_backgrounds = {}
+
+      local function capture_inactive_window_backgrounds()
+        for source, target in pairs(window_background_groups) do
+          inactive_window_backgrounds[target] = vim.api.nvim_get_hl(0, { name = source, link = false })
         end
+      end
+
+      local function define_window_backgrounds()
+        for _, target in pairs(window_background_groups) do
+          vim.api.nvim_set_hl(0, target, inactive_window_backgrounds[target])
+        end
+
+        vim.api.nvim_set_hl(0, 'Normal', set_background(vim.api.nvim_get_hl(0, { name = 'Normal', link = false }), 'NONE'))
+        vim.api.nvim_set_hl(0, 'NormalNC', set_background(vim.api.nvim_get_hl(0, { name = 'NormalNC', link = false }), 'NONE'))
+        vim.api.nvim_set_hl(0, 'SignColumn', set_background(vim.api.nvim_get_hl(0, { name = 'SignColumn', link = false }), 'NONE'))
+        vim.api.nvim_set_hl(0, 'EndOfBuffer', set_background(vim.api.nvim_get_hl(0, { name = 'EndOfBuffer', link = false }), 'NONE'))
+        vim.api.nvim_set_hl(0, 'NonText', set_background(vim.api.nvim_get_hl(0, { name = 'NonText', link = false }), 'NONE'))
+        vim.api.nvim_set_hl(0, 'FoldColumn', set_background(vim.api.nvim_get_hl(0, { name = 'FoldColumn', link = false }), 'NONE'))
+      end
+
+      local function apply_focused_window_transparency()
+        define_window_backgrounds()
 
         for _, win in ipairs(vim.api.nvim_list_wins()) do
           local buf = vim.api.nvim_win_get_buf(win)
           local buftype = vim.bo[buf].buftype
-          local is_editor_or_terminal = buftype == '' or buftype == 'terminal'
 
-          if is_editor_or_terminal then
-            if win == vim.api.nvim_get_current_win() then
-              vim.wo[win].winhighlight = table.concat({
-                'Normal:NormalFocused',
-                'NormalNC:NormalNCFocused',
-                'SignColumn:SignColumnFocused',
-                'EndOfBuffer:EndOfBufferFocused',
-                'LineNr:LineNrFocused',
-                'CursorLineNr:CursorLineNrFocused',
-                'FoldColumn:FoldColumnFocused',
-                'CursorLine:CursorLineFocused',
-              }, ',')
-            else
-              vim.wo[win].winhighlight = ''
-            end
+          if buftype == '' or buftype == 'terminal' then
+            vim.wo[win].winhighlight = win == vim.api.nvim_get_current_win() and '' or inactive_window_highlights
           end
         end
+
+        vim.cmd.redraw()
       end
 
-      vim.api.nvim_create_autocmd({ 'WinEnter', 'BufEnter', 'TermOpen', 'ColorScheme' }, {
-        desc = 'Keep the focused editor or terminal window transparent',
+      capture_inactive_window_backgrounds()
+
+      vim.api.nvim_create_autocmd({ 'VimEnter', 'WinEnter', 'WinLeave', 'BufEnter', 'TermOpen' }, {
+        desc = 'Make only the focused editor or terminal window transparent',
         group = vim.api.nvim_create_augroup('focused-window-transparency', { clear = true }),
         callback = apply_focused_window_transparency,
+      })
+
+      vim.api.nvim_create_autocmd('ColorScheme', {
+        desc = 'Refresh focused-window transparency after colorscheme changes',
+        group = vim.api.nvim_create_augroup('focused-window-transparency-colorscheme', { clear = true }),
+        callback = function()
+          capture_inactive_window_backgrounds()
+          apply_focused_window_transparency()
+        end,
       })
 
       apply_focused_window_transparency()
