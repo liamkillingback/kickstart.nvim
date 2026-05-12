@@ -950,6 +950,57 @@ require('lazy').setup({
       -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
       vim.cmd.colorscheme 'tokyonight-night'
 
+      local function apply_focused_window_transparency()
+        local transparent_groups = {
+          Normal = 'NormalFocused',
+          NormalNC = 'NormalNCFocused',
+          SignColumn = 'SignColumnFocused',
+          EndOfBuffer = 'EndOfBufferFocused',
+          LineNr = 'LineNrFocused',
+          CursorLineNr = 'CursorLineNrFocused',
+          FoldColumn = 'FoldColumnFocused',
+          CursorLine = 'CursorLineFocused',
+        }
+
+        for source, target in pairs(transparent_groups) do
+          local hl = vim.api.nvim_get_hl(0, { name = source, link = false })
+          hl.bg = nil
+          hl.ctermbg = nil
+          vim.api.nvim_set_hl(0, target, hl)
+        end
+
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          local buf = vim.api.nvim_win_get_buf(win)
+          local buftype = vim.bo[buf].buftype
+          local is_editor_or_terminal = buftype == '' or buftype == 'terminal'
+
+          if is_editor_or_terminal then
+            if win == vim.api.nvim_get_current_win() then
+              vim.wo[win].winhighlight = table.concat({
+                'Normal:NormalFocused',
+                'NormalNC:NormalNCFocused',
+                'SignColumn:SignColumnFocused',
+                'EndOfBuffer:EndOfBufferFocused',
+                'LineNr:LineNrFocused',
+                'CursorLineNr:CursorLineNrFocused',
+                'FoldColumn:FoldColumnFocused',
+                'CursorLine:CursorLineFocused',
+              }, ',')
+            else
+              vim.wo[win].winhighlight = ''
+            end
+          end
+        end
+      end
+
+      vim.api.nvim_create_autocmd({ 'WinEnter', 'BufEnter', 'TermOpen', 'ColorScheme' }, {
+        desc = 'Keep the focused editor or terminal window transparent',
+        group = vim.api.nvim_create_augroup('focused-window-transparency', { clear = true }),
+        callback = apply_focused_window_transparency,
+      })
+
+      apply_focused_window_transparency()
+
       vim.api.nvim_set_hl(0, 'NormalFloat', { bg = '#2a2e3f', fg = '#c0caf5' }) -- dark blue-gray background
       vim.api.nvim_set_hl(0, 'FloatBorder', { bg = '#2a2e3f', fg = '#7aa2f7' }) -- blue border
     end,
