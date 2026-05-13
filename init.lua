@@ -687,6 +687,14 @@ require('lazy').setup({
       --  So, we create new capabilities with blink.cmp, and then broadcast that to the servers.
       local capabilities = require('blink.cmp').get_lsp_capabilities()
 
+      vim.lsp.config('expert', {
+        cmd = { 'expert', '--stdio' },
+        root_markers = { 'mix.exs', '.git' },
+        filetypes = { 'elixir', 'eelixir', 'heex' },
+        capabilities = capabilities,
+      })
+      vim.lsp.enable 'expert'
+
       -- Enable the following language servers
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
       --
@@ -805,6 +813,9 @@ require('lazy').setup({
         end
       end,
       formatters_by_ft = {
+        elixir = { 'mix' },
+        eelixir = { 'mix' },
+        heex = { 'mix' },
         lua = { 'stylua' },
         -- Conform can also run multiple formatters sequentially
         -- python = { "isort", "black" },
@@ -837,14 +848,13 @@ require('lazy').setup({
           -- `friendly-snippets` contains a variety of premade snippets.
           --    See the README about individual language/framework/plugin snippets:
           --    https://github.com/rafamadriz/friendly-snippets
-          -- {
-          --   'rafamadriz/friendly-snippets',
-          --   config = function()
-          --     require('luasnip.loaders.from_vscode').lazy_load()
-          --   end,
-          -- },
+          'rafamadriz/friendly-snippets',
         },
-        opts = {},
+        config = function(_, opts)
+          require('luasnip').setup(opts)
+          require('luasnip.loaders.from_vscode').lazy_load()
+          require('luasnip.loaders.from_lua').lazy_load { paths = vim.fn.stdpath 'config' .. '/lua/custom/snippets' }
+        end,
       },
       'folke/lazydev.nvim',
     },
@@ -864,8 +874,6 @@ require('lazy').setup({
           'snippet_forward',
           'fallback',
         },
-        ['<Enter>'] = { 'select_and_accept', 'fallback' },
-        ['<CR>'] = { 'select_and_accept', 'fallback' },
         ['<C-y>'] = { 'select_and_accept', 'fallback' },
 
         ['<A-k>'] = { 'select_prev' },
@@ -891,7 +899,7 @@ require('lazy').setup({
         -- <c-k>: Toggle signature help
         --
         -- See :h blink-cmp-config-keymap for defining your own keymap
-        -- Keep `super-tab` for snippet navigation/accept, and explicit Enter for confirm.
+        -- Keep `super-tab` and <C-y> for snippet navigation/accept so <CR> can insert newlines.
 
         -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
         --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
@@ -1097,7 +1105,7 @@ require('lazy').setup({
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
-      ensure_installed = { 'elixir', 'zig', 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
+      ensure_installed = { 'elixir', 'heex', 'zig', 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
@@ -1105,7 +1113,7 @@ require('lazy').setup({
         -- Some languages depend on vim's regex highlighting system (such as Ruby) for indent rules.
         --  If you are experiencing weird indenting issues, add the language to
         --  the list of additional_vim_regex_highlighting and disabled languages for indent.
-        additional_vim_regex_highlighting = { 'ruby' },
+        additional_vim_regex_highlighting = { 'ruby', 'elixir' },
       },
       indent = { enable = true, disable = { 'ruby' } },
     },
@@ -1118,12 +1126,173 @@ require('lazy').setup({
   },
 
   {
+    'nvim-treesitter/nvim-treesitter-textobjects',
+    dependencies = { 'nvim-treesitter/nvim-treesitter' },
+    config = function()
+      local function collect_elixir_defs(bufnr)
+        local parser = vim.treesitter.get_parser(bufnr, 'elixir')
+        local tree = parser and parser:parse()[1]
+        if not tree then
+          return {}
+        end
+
+        local root = tree:root()
+        local ranges = {}
+        local seen = {}
+        local def_keywords = {
+          def = true,
+          defp = true,
+        }
+
+        local function walk(node)
+          local node_type = node:type()
+          if node_type == 'call' then
+            local first_child = node:child(0)
+            if first_child and first_child:type() == 'identifier' then
+              local first_text = vim.treesitter.get_node_text(first_child, bufnr):match '^%s*(.-)%s*$'
+              if def_keywords[first_text] then
+                local start_row, start_col, end_row, end_col = node:range()
+                local key = start_row .. ':' .. start_col
+                if not seen[key] then
+                  table.insert(ranges, {
+                    start = { start_row, start_col },
+                    _end = { end_row, math.max(end_col - 1, 0) },
+                    node = node,
+                  })
+                  seen[key] = true
+                end
+              end
+            end
+          end
+
+          for child in node:iter_children() do
+            walk(child)
+          end
+        end
+
+        walk(root)
+
+        table.sort(ranges, function(a, b)
+          if a.start[1] == b.start[1] then
+            return a.start[2] < b.start[2]
+          end
+          return a.start[1] < b.start[1]
+        end)
+
+        return ranges
+      end
+
+      local function move_to_def(direction)
+        local bufnr = vim.api.nvim_get_current_buf()
+        local ft = vim.bo[bufnr].filetype
+        if ft ~= 'elixir' and ft ~= 'eelixir' then
+          return
+        end
+
+        local defs = collect_elixir_defs(bufnr)
+        if #defs == 0 then
+          return
+        end
+
+        local cursor_row, cursor_col = unpack(vim.api.nvim_win_get_cursor(0))
+        cursor_row = cursor_row - 1
+
+        local best
+        local function is_after(a_row, a_col, b_row, b_col)
+          return a_row > b_row or (a_row == b_row and a_col > b_col)
+        end
+
+        if direction == 'next_start' then
+          for _, def in ipairs(defs) do
+            if is_after(def.start[1], def.start[2], cursor_row, cursor_col) then
+              best = def.start
+              break
+            end
+          end
+        elseif direction == 'prev_start' then
+          for i = #defs, 1, -1 do
+            local def = defs[i]
+            if is_after(cursor_row, cursor_col, def.start[1], def.start[2]) then
+              best = def.start
+              break
+            end
+          end
+        elseif direction == 'next_end' then
+          for _, def in ipairs(defs) do
+            local end_row, end_col = def._end[1], def._end[2]
+            if is_after(end_row, end_col, cursor_row, cursor_col) then
+              best = def._end
+              break
+            end
+          end
+        else
+          for i = #defs, 1, -1 do
+            local def = defs[i]
+            local end_row, end_col = def._end[1], def._end[2]
+            if is_after(cursor_row, cursor_col, end_row, end_col) then
+              best = def._end
+              break
+            end
+          end
+        end
+
+        if best then
+          vim.api.nvim_win_set_cursor(0, { best[1] + 1, best[2] })
+          vim.cmd 'normal! zz'
+        end
+      end
+
+      local function map(mode, lhs, rhs, desc)
+        vim.keymap.set(mode, lhs, rhs, { desc = desc, silent = true })
+      end
+
+      map('n', ']m', function()
+        move_to_def 'next_start'
+      end, 'Next function start')
+      map('n', ']f', function()
+        move_to_def 'next_start'
+      end, 'Next function start')
+      map('n', '[m', function()
+        move_to_def 'prev_start'
+      end, 'Previous function start')
+      map('n', '[f', function()
+        move_to_def 'prev_start'
+      end, 'Previous function start')
+      map('n', ']M', function()
+        move_to_def 'next_end'
+      end, 'Next function end')
+      map('n', ']F', function()
+        move_to_def 'next_end'
+      end, 'Next function end')
+      map('n', '[M', function()
+        move_to_def 'prev_end'
+      end, 'Previous function end')
+      map('n', '[F', function()
+        move_to_def 'prev_end'
+      end, 'Previous function end')
+    end,
+  },
+
+  {
     -- Auto pairs
     'windwp/nvim-autopairs',
-    event = 'InsertEnter',
+    lazy = false,
     config = function()
-      require('nvim-autopairs').setup()
+      local autopairs = require 'nvim-autopairs'
+      autopairs.setup()
+      autopairs.add_rules(require 'nvim-autopairs.rules.endwise-elixir')
     end,
+  },
+
+  {
+    -- Auto-close and auto-rename tags in HEEx/Phoenix templates.
+    'windwp/nvim-ts-autotag',
+    event = { 'BufReadPre', 'BufNewFile' },
+    opts = {
+      aliases = {
+        elixir = 'heex',
+      },
+    },
   },
 
   {
@@ -1259,14 +1428,6 @@ require('lazy').setup({
 })
 
 -- Load beginner-friendly keymap cheat sheet command/mapping.
-require('custom.cheatsheet')
-
-vim.lsp.config('expert', {
-  cmd = { 'expert', '--stdio' },
-  root_markers = { 'mix.exs', '.git' },
-  filetypes = { 'elixir', 'eelixir', 'heex' },
-})
-
-vim.lsp.enable('expert')
+require 'custom.cheatsheet'
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
