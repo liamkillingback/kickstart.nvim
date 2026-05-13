@@ -177,6 +177,7 @@ vim.keymap.set('i', '<A-e>', '<C-o>$', { desc = 'Insert: go to end of line' })
 vim.keymap.set('n', '<BS>', '<C-o>', { noremap = true })
 vim.keymap.set('n', '<CR>', '<C-]>', { noremap = true })
 vim.keymap.set('n', 'F', '$zf%')
+vim.keymap.set('n', '<leader><CR>', 'i<CR><Esc>O', { desc = 'Split line and insert above' })
 
 vim.keymap.set('n', '<A-k>', '10k', { noremap = true })
 vim.keymap.set('n', '<A-j>', '10j', { noremap = true })
@@ -1114,6 +1115,15 @@ require('lazy').setup({
     --    - Incremental selection: Included, see `:help nvim-treesitter-incremental-selection-mod`
     --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
     --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
+  },
+
+  {
+    -- Auto pairs
+    'windwp/nvim-autopairs',
+    event = 'InsertEnter',
+    config = function()
+      require('nvim-autopairs').setup()
+    end,
   },
 
   {
